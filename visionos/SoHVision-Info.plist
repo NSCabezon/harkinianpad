@@ -2,9 +2,14 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-	<!-- visionOS only hands extended gamepads (DualSense, Xbox) to apps that declare them. -->
+	<!-- visionOS only hands extended gamepads (DualSense, Xbox) and the PS VR2 Sense
+	     controllers (SpatialGamepad) to apps that declare them. -->
 	<key>GCSupportedGameControllers</key>
 	<array>
+		<dict>
+			<key>ProfileName</key>
+			<string>SpatialGamepad</string>
+		</dict>
 		<dict>
 			<key>ProfileName</key>
 			<string>ExtendedGamepad</string>

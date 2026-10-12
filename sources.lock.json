@@ -4,7 +4,7 @@
     {
       "name": "Shipwright",
       "url": "https://github.com/NSCabezon/Shipwright.git",
-      "commit": "94ee36a7741600f72bf08585dbda8ed5bbeb76cd",
+      "commit": "eb023484757eed6c54e4dc85bdb227da1cbd37e1",
       "path": "sources/Shipwright",
       "patches": [],
       "upstream_url": "https://github.com/HarbourMasters/Shipwright.git",
@@ -13,7 +13,7 @@
     {
       "name": "libultraship",
       "url": "https://github.com/NSCabezon/libultraship.git",
-      "commit": "a391476c7f0b9fe054f7a78198da3a9351986206",
+      "commit": "6290d3ec1e2c239ea7bab4614dbab45ad16d64b8",
       "path": "sources/Shipwright/libultraship",
       "patches": [],
       "upstream_url": "https://github.com/Kenix3/libultraship.git",
