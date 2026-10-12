@@ -1,0 +1,62 @@
+#usda 1.0
+(
+    defaultPrim = "Root"
+    metersPerUnit = 1
+    upAxis = "Y"
+)
+
+# S0 stereo spike: unlit ShaderGraph material that shows a different texture
+# to each eye. Written by hand (no Reality Composer Pro). Node ids come from
+# ShaderGraph.framework/Resources/MaterialX/Apple/apple_nodedefs/
+# apple_defs_cameraindex.mtlx and apple_defs.mtlx.
+#
+# Parameters (bound at runtime with ShaderGraphMaterial.setParameter):
+#   LeftTexture  -> TextureResource(from: LowLevelTexture) for camera index 0
+#   RightTexture -> TextureResource(from: LowLevelTexture) for camera index 1
+def Xform "Root"
+{
+    def Material "StereoMaterial"
+    {
+        asset inputs:LeftTexture
+        asset inputs:RightTexture
+        token outputs:mtlx:surface.connect = </Root/StereoMaterial/UnlitSurface.outputs:out>
+        token outputs:realitykit:vertex
+
+        def Shader "UnlitSurface"
+        {
+            uniform token info:id = "ND_realitykit_unlit_surfaceshader"
+            color3f inputs:color.connect = </Root/StereoMaterial/EyeSwitch.outputs:out>
+            float inputs:opacity = 1
+            bool inputs:applyPostProcessToneMap = 0
+            bool inputs:hasPremultipliedAlpha = 0
+            token outputs:out
+        }
+
+        def Shader "EyeSwitch"
+        {
+            uniform token info:id = "ND_realitykit_geometry_switch_cameraindex_color3"
+            color3f inputs:mono.connect = </Root/StereoMaterial/LeftImage.outputs:out>
+            color3f inputs:left.connect = </Root/StereoMaterial/LeftImage.outputs:out>
+            color3f inputs:right.connect = </Root/StereoMaterial/RightImage.outputs:out>
+            color3f outputs:out
+        }
+
+        def Shader "LeftImage"
+        {
+            uniform token info:id = "ND_image_color3"
+            asset inputs:file.connect = </Root/StereoMaterial.inputs:LeftTexture>
+            string inputs:uaddressmode = "clamp"
+            string inputs:vaddressmode = "clamp"
+            color3f outputs:out
+        }
+
+        def Shader "RightImage"
+        {
+            uniform token info:id = "ND_image_color3"
+            asset inputs:file.connect = </Root/StereoMaterial.inputs:RightTexture>
+            string inputs:uaddressmode = "clamp"
+            string inputs:vaddressmode = "clamp"
+            color3f outputs:out
+        }
+    }
+}
