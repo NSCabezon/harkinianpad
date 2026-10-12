@@ -32,6 +32,11 @@ NS_SWIFT_SENDABLE
 @interface HPStereoSink : NSObject
 
 - (nullable instancetype)initWithDevice:(id<MTLDevice>)device width:(NSInteger)width height:(NSInteger)height;
+/// `eyes` = 1 for the flat window (keeps only the left eye of a stereo frame), 2 for stereo.
+- (nullable instancetype)initWithDevice:(id<MTLDevice>)device
+                                  width:(NSInteger)width
+                                 height:(NSInteger)height
+                                   eyes:(NSInteger)eyes;
 - (instancetype)init NS_UNAVAILABLE;
 
 @property (nonatomic, readonly) NSInteger width;
@@ -49,6 +54,12 @@ NS_SWIFT_SENDABLE
 /// Returns NO if no new frame is pending. `mono` = the engine sent one eye only.
 - (BOOL)takeLatestFrameValue:(uint64_t*)value slot:(NSInteger*)slot mono:(BOOL*)mono
     NS_SWIFT_NAME(takeLatestFrame(value:slot:mono:));
+
+/// Main thread, flat window (2D): takes the newest frame and draws it aspect-fit into
+/// the layer's next drawable on `queue` (waits for the engine on the GPU, not the CPU).
+/// Returns NO if there was no new frame or no drawable.
+- (BOOL)presentLatestToLayer:(CAMetalLayer*)layer queue:(id<MTLCommandQueue>)queue
+    NS_SWIFT_NAME(presentLatest(to:queue:));
 
 /// Any thread: the main-actor blit out of `slot` completed on the GPU.
 - (void)releaseSlot:(NSInteger)slot;
@@ -72,7 +83,19 @@ NS_SWIFT_SENDABLE
 /// Safe from any thread.
 + (void)attachStereoSink:(nullable HPStereoSink*)sink NS_SWIFT_NAME(attachStereo(_:));
 
-/// Installs the presenter and starts the game thread once. Later calls are no-ops.
+/// Detaches `sink` only if it is still the attached one (views may appear before
+/// the previous one disappears). Safe from any thread.
++ (void)detachStereoSink:(HPStereoSink*)sink NS_SWIFT_NAME(detachStereo(_:));
+
+/// The sink presents currently go to (FPS meter). Safe from any thread.
+@property (class, readonly, nullable) HPStereoSink* attachedStereoSink;
+
+/// Main thread: runs on every display refresh, just before the engine's tick
+/// (HP_DisplayTick). The flat window presents from it. nil clears it.
++ (void)setDisplayTickHandler:(nullable void (^)(void))handler;
+
+/// Installs the presenter and starts the game thread once (and the display clock,
+/// main thread). Later calls are no-ops.
 /// Returns NO if the thread could not be created.
 + (BOOL)startEngine;
 

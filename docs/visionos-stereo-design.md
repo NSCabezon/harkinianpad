@@ -39,7 +39,7 @@ Approach (interpreter + game hints):
 | Element | Problem | Fix |
 |---|---|---|
 | HUD rects (`GfxDrawRectangle` `:2768`) | sits at convergence plane | ±d px per eye when `!mFbActive` and width < 95% of screen; same for ImGui via `DrawData->DisplayPos.x` |
-| Skybox (`z_vr_box_draw.c:16`, centred on mid-eye) | slightly less parallax than infinity | acceptable |
+| Skybox (`z_vr_box_draw.c:16`, centred on mid-eye), sun and moon | a small box around the camera: strong parallax instead of infinity | `G_STEREO_SKY_BEGIN/END` around them: no eye translation, only the convergence shear |
 | Billboards | correct (parallel cameras share rotation) | reason toe-in is rejected |
 | Prerendered backgrounds (`z_room.c:258` `Room_DrawBackground2D`) | flat 2D plate with 3D actors | room tag lowers `sep` (v1 mono); v2 shift plate to fixed depth |
 | Framebuffer copies (`gfx_set_fb_handler_custom` `:4067`, `CopyFrameBuffer` `:5161`, `gfx_set_timg_fb_handler_custom` `:4172`, `mFbTextures` `:1219`) | second pass reusing ids clobbers eye 0 | **per-eye framebuffer alias table** incl. `mGameFb`, `mGameFbMsaaResolved` → pause background (`z_play.c:1616`) and VisMono (`z_vismono.c:156`) stay stereo |
@@ -58,8 +58,27 @@ Approach (interpreter + game hints):
   Divergence cap `p_max = IPD_real / screen_width_m` (≈4.5% for a 1.4 m screen), sent by the host.
   Example D = 250, fovy 60, 16:9, p = 3% → sep ≈ 15 units (6× real: miniature look, like the 3DS).
 - Default D = `|view->eye − player focus|` clamped to [60, 800], smoothed ~0.3 s, snapping
-  on `FrameInterpolation_DontInterpolateCamera` (`z_view.c:402`).
+  on `FrameInterpolation_DontInterpolateCamera` (`z_view.c:402`). In cutscenes the focus is
+  `view.lookAt`. `gStereo.DynamicConvergence=0` uses the fixed `gStereo.Convergence`.
+- Crossed-disparity cap: per eye the NDC disparity is `k + C/w` (`C = −h·P00`), which grows
+  as 1/w in front of D. `GfxSpVertex` clamps it to `−CrossedLimit·k` (default 100% = the
+  disparity at infinity, mirrored), so geometry nearer than D/2 stops coming further out.
+  One compare per vertex; triangles straddling the limit bend slightly.
+- Default `gStereo.Depth` = 30 (% of `p_max`).
 - Settings (`SohMenuSettings.cpp`): "3D depth" slider (0–100% of `p_max`), convergence bias, HUD depth.
+
+### Display-list hints (`G_SETSTEREO`, opcode 0x4a)
+
+`gSPStereo(pkt, op, flags, value)` in LUS `gbi.h`; the interpreter ignores it in mono, so mono
+output is unchanged. Being DL commands, the hints replay with frame interpolation.
+
+| Op | Emitted by | Effect |
+|---|---|---|
+| `G_STEREO_PROJ_HUD` | `func_800AB560` (interface perspective), `View_SetStereoInterface` (title logos, file select) | next projection load gets the HUD disparity as a shear (`x += k_hud·w`) |
+| `G_STEREO_SKY_BEGIN/END` | `SkyboxDraw_Draw`, `Environment_DrawSunAndMoon` | eye terms of the current perspective become `0 + k_inf·w` until END |
+| `G_STEREO_CONVERGENCE` (16.16, flag 1 = cut) | `func_800AAA9C` after `View_SetStereoFocus` (`Play_Draw`) | target D; eye 0 smooths it (τ 0.1 s), both eyes use it |
+
+Interpreter state is reset at the start of every `Run`. Orthographic loads stay HUD by default.
 
 ## 3. Presentation
 

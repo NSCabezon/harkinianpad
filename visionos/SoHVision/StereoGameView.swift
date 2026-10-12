@@ -20,9 +20,12 @@ import os
 // The ShaderGraph material (StereoMaterial.usda, CameraIndexSwitch) shows the
 // left texture to camera 0 and in mono views (simulator), the right to camera 1.
 
-/// Engine render sizes for the stereo view. The ring and the LowLevelTextures
+/// Engine render sizes for the stereo view (16:9). The ring and the LowLevelTextures
 /// follow the tier, so resizing the window only reallocates on a tier change.
-private let stereoTiers: [(Int, Int)] = [(1280, 720), (1920, 1080), (2560, 1440)]
+/// Capped at 1920x1080 per eye: the default 1280 pt window would otherwise pick
+/// 2560x1440, and stereo renders and copies every pixel twice (per eye: engine ->
+/// ring -> LowLevelTexture). The 2D path keeps the full drawable size.
+private let stereoTiers: [(Int, Int)] = [(1280, 720), (1920, 1080)]
 
 /// Window distance is not observable in the Shared Space; visionOS opens windows
 /// roughly at arm's length+. Verify on device (drives the divergence cap).
@@ -75,7 +78,7 @@ final class StereoGamePresenter {
 
     func deactivate() {
         active = false
-        HPVisionHost.attachStereo(nil)
+        if let sink { HPVisionHost.detachStereo(sink) }
     }
 
     /// The plane's on-screen size changed: pick the render tier, tell the engine
@@ -134,6 +137,7 @@ final class StereoGamePresenter {
         }
         self.left = left
         self.right = right
+        if let old = self.sink { HPVisionHost.detachStereo(old) }
         self.sink = sink
         if active { HPVisionHost.attachStereo(sink) }
     }
@@ -208,25 +212,6 @@ struct StereoGameView: View {
         }
         .onAppear { presenter.activate() }
         .onDisappear { presenter.deactivate() }
-        .task { await logPacing() }
-    }
-
-    /// Every 5 s: game frames published vs frames replaced on the main actor.
-    private func logPacing() async {
-        let log = Logger(subsystem: "com.nscabezon.sohvision", category: "Stereo")
-        var last: (UInt64, UInt64, UInt64, Int) = (0, 0, 0, 0)
-        while !Task.isCancelled {
-            try? await Task.sleep(for: .seconds(5))
-            guard let s = presenter.stats else { continue }
-            let replaced = presenter.replacedFrames
-            let pub = Double(s.published &- last.0) / 5
-            let rep = Double(replaced - last.3) / 5
-            log.notice("""
-                stereo pacing: game \(pub, format: .fixed(precision: 1))/s, replace \(rep, format: .fixed(precision: 1))/s, \
-                dropped \(s.dropped &- last.1), superseded \(s.superseded &- last.2) (tier \(presenter.tier.0)x\(presenter.tier.1))
-                """)
-            last = (s.published, s.dropped, s.superseded, replaced)
-        }
     }
 }
 

@@ -1,10 +1,12 @@
 #import "HPVisionHost.h"
 
 #import <Metal/Metal.h>
+#import <QuartzCore/CADisplayLink.h>
 #import <os/lock.h>
 #import <os/log.h>
 #include <pthread.h>
 #include <stdatomic.h>
+#include <math.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/qos.h>
@@ -26,11 +28,16 @@ static _Atomic long sState = HPEngineStateIdle;
 static _Atomic int sExitCode = 0;
 static atomic_flag sStarted = ATOMIC_FLAG_INIT;
 
-// Presenter GPU state. Only touched on the game thread (present() callback).
-static id<MTLDevice> sDevice;
-static id<MTLRenderPipelineState> sPipeline;
-static MTLPixelFormat sPipelineFormat = MTLPixelFormatInvalid;
-static id<MTLSamplerState> sSampler;
+// Presenter GPU state, one per thread that encodes presentations: the game thread
+// (present() callback) and the main thread (HPStereoSink presentLatestToLayer).
+typedef struct {
+    __unsafe_unretained id<MTLDevice> device; // the pipeline keeps the device alive
+    id<MTLRenderPipelineState> pipeline;
+    MTLPixelFormat format;
+    id<MTLSamplerState> sampler;
+} HPPipelineCache;
+static HPPipelineCache sGameCache;
+static HPPipelineCache sMainCache;
 
 static os_log_t HPLog(void) {
     static os_log_t log;
@@ -49,8 +56,8 @@ static BOOL IsSRGB(MTLPixelFormat format) {
     }
 }
 
-static BOOL PreparePipeline(id<MTLDevice> device, MTLPixelFormat format) {
-    if (sPipeline != nil && sDevice == device && sPipelineFormat == format) {
+static BOOL PreparePipeline(HPPipelineCache* cache, id<MTLDevice> device, MTLPixelFormat format) {
+    if (cache->pipeline != nil && cache->device == device && cache->format == format) {
         return YES;
     }
     id<MTLLibrary> library = [device newDefaultLibrary];
@@ -76,20 +83,21 @@ static BOOL PreparePipeline(id<MTLDevice> device, MTLPixelFormat format) {
     samplerDesc.magFilter = MTLSamplerMinMagFilterLinear;
     samplerDesc.sAddressMode = MTLSamplerAddressModeClampToEdge;
     samplerDesc.tAddressMode = MTLSamplerAddressModeClampToEdge;
-    sSampler = [device newSamplerStateWithDescriptor:samplerDesc];
-    sPipeline = pipeline;
-    sDevice = device;
-    sPipelineFormat = format;
+    cache->sampler = [device newSamplerStateWithDescriptor:samplerDesc];
+    cache->pipeline = pipeline;
+    cache->device = device;
+    cache->format = format;
     return YES;
 }
 
 // Draws `source` aspect-fit (letterboxed, black bars) into `target` inside `cmdbuf`.
-// Game thread only (uses the shared pipeline state).
-static BOOL EncodeFit(id<MTLCommandBuffer> cmdbuf, id<MTLTexture> source, id<MTLTexture> target, BOOL sourceIsSRGB) {
+// `cache` belongs to the calling thread.
+static BOOL EncodeFit(HPPipelineCache* cache, id<MTLCommandBuffer> cmdbuf, id<MTLTexture> source,
+                      id<MTLTexture> target, BOOL sourceIsSRGB) {
     if (source.width == 0 || source.height == 0 || target.width == 0 || target.height == 0) {
         return NO;
     }
-    if (!PreparePipeline(cmdbuf.device, target.pixelFormat)) {
+    if (!PreparePipeline(cache, cmdbuf.device, target.pixelFormat)) {
         return NO;
     }
 
@@ -111,12 +119,12 @@ static BOOL EncodeFit(id<MTLCommandBuffer> cmdbuf, id<MTLTexture> source, id<MTL
 
     id<MTLRenderCommandEncoder> encoder = [cmdbuf renderCommandEncoderWithDescriptor:pass];
     encoder.label = @"HPPresent";
-    [encoder setRenderPipelineState:sPipeline];
+    [encoder setRenderPipelineState:cache->pipeline];
     [encoder setViewport:viewport];
     HPPresentUniforms uniforms = { .encodeSRGB = (sourceIsSRGB && !IsSRGB(target.pixelFormat)) ? 1u : 0u };
     [encoder setFragmentBytes:&uniforms length:sizeof(uniforms) atIndex:0];
     [encoder setFragmentTexture:source atIndex:0];
-    [encoder setFragmentSamplerState:sSampler atIndex:0];
+    [encoder setFragmentSamplerState:cache->sampler atIndex:0];
     [encoder drawPrimitives:MTLPrimitiveTypeTriangleStrip vertexStart:0 vertexCount:4];
     [encoder endEncoding];
     return YES;
@@ -129,6 +137,7 @@ enum { HPSlotFree = 0, HPSlotWriting, HPSlotPending, HPSlotPresenting };
 #define HP_STEREO_SLOTS 3
 
 @implementation HPStereoSink {
+    NSInteger _eyes;                              // 1 (flat window) or 2
     id<MTLTexture> _ring[HP_STEREO_SLOTS][2];     // BGRA8Unorm_sRGB, read by the main-actor blit
     id<MTLTexture> _ringView[HP_STEREO_SLOTS][2]; // BGRA8Unorm views, render targets on the game thread
     os_unfair_lock _lock;
@@ -149,6 +158,13 @@ enum { HPSlotFree = 0, HPSlotWriting, HPSlotPending, HPSlotPresenting };
 }
 
 - (instancetype)initWithDevice:(id<MTLDevice>)device width:(NSInteger)width height:(NSInteger)height {
+    return [self initWithDevice:device width:width height:height eyes:2];
+}
+
+- (instancetype)initWithDevice:(id<MTLDevice>)device
+                         width:(NSInteger)width
+                        height:(NSInteger)height
+                          eyes:(NSInteger)eyes {
     if (width < 1 || height < 1) {
         return nil;
     }
@@ -158,6 +174,7 @@ enum { HPSlotFree = 0, HPSlotWriting, HPSlotPending, HPSlotPresenting };
     }
     _width = width;
     _height = height;
+    _eyes = eyes < 2 ? 1 : 2;
     _lock = OS_UNFAIR_LOCK_INIT;
     _pendingSlot = -1;
     _writingSlot = -1;
@@ -173,7 +190,7 @@ enum { HPSlotFree = 0, HPSlotWriting, HPSlotPending, HPSlotPresenting };
     desc.storageMode = MTLStorageModePrivate;
     desc.usage = MTLTextureUsageRenderTarget | MTLTextureUsageShaderRead | MTLTextureUsagePixelFormatView;
     for (int slot = 0; slot < HP_STEREO_SLOTS; slot++) {
-        for (int eye = 0; eye < 2; eye++) {
+        for (int eye = 0; eye < _eyes; eye++) {
             id<MTLTexture> t = [device newTextureWithDescriptor:desc];
             id<MTLTexture> v = [t newTextureViewWithPixelFormat:MTLPixelFormatBGRA8Unorm];
             if (t == nil || v == nil) {
@@ -188,7 +205,7 @@ enum { HPSlotFree = 0, HPSlotWriting, HPSlotPending, HPSlotPresenting };
 }
 
 - (id<MTLTexture>)textureForSlot:(NSInteger)slot eye:(NSInteger)eye {
-    return _ring[slot < 0 ? 0 : slot % HP_STEREO_SLOTS][eye == 0 ? 0 : 1];
+    return _ring[slot < 0 ? 0 : slot % HP_STEREO_SLOTS][eye == 0 || _eyes == 1 ? 0 : 1];
 }
 
 - (uint64_t)publishedFrames { return atomic_load(&_published); }
@@ -202,6 +219,12 @@ enum { HPSlotFree = 0, HPSlotWriting, HPSlotPending, HPSlotPresenting };
     id<MTLCommandBuffer> cmdbuf = (__bridge id<MTLCommandBuffer>)info->commandBuffer;
     int eyeCount = info->eyeCount < 1 ? 1 : (info->eyeCount > 2 ? 2 : info->eyeCount);
     int eye = info->eye < 0 ? 0 : (info->eye > 1 ? 1 : info->eye);
+    if (eyeCount > _eyes) {
+        eyeCount = (int)_eyes; // a one-eye sink keeps the left eye of a stereo frame
+        if (eye >= eyeCount) {
+            return;
+        }
+    }
 
     if (eye == 0) {
         os_unfair_lock_lock(&_lock);
@@ -225,7 +248,7 @@ enum { HPSlotFree = 0, HPSlotWriting, HPSlotPending, HPSlotPresenting };
         return; // eye 0 of this frame was dropped
     }
 
-    if (!EncodeFit(cmdbuf, source, _ringView[_writingSlot][eye], IsSRGB(source.pixelFormat))) {
+    if (!EncodeFit(&sGameCache, cmdbuf, source, _ringView[_writingSlot][eye], IsSRGB(source.pixelFormat))) {
         return;
     }
     if (eye != eyeCount - 1) {
@@ -284,6 +307,37 @@ enum { HPSlotFree = 0, HPSlotWriting, HPSlotPending, HPSlotPresenting };
     return YES;
 }
 
+- (BOOL)presentLatestToLayer:(CAMetalLayer*)layer queue:(id<MTLCommandQueue>)queue {
+    uint64_t value = 0;
+    NSInteger slot = -1;
+    BOOL mono = NO;
+    if (![self takeLatestFrameValue:&value slot:&slot mono:&mono]) {
+        return NO;
+    }
+    BOOL presented = NO;
+    @autoreleasepool {
+        id<CAMetalDrawable> drawable = layer.drawableSize.width >= 1 ? [layer nextDrawable] : nil;
+        id<MTLCommandBuffer> cmdbuf = drawable != nil ? [queue commandBuffer] : nil;
+        if (cmdbuf != nil) {
+            cmdbuf.label = @"HPStereoSink.present";
+            [cmdbuf encodeWaitForEvent:_event value:value];
+            if (EncodeFit(&sMainCache, cmdbuf, _ring[slot][0], drawable.texture, YES)) {
+                [cmdbuf presentDrawable:drawable];
+                presented = YES;
+            }
+            NSInteger taken = slot;
+            __weak HPStereoSink* weakSelf = self;
+            [cmdbuf addCompletedHandler:^(id<MTLCommandBuffer> _Nonnull cb) {
+                [weakSelf releaseSlot:taken];
+            }];
+            [cmdbuf commit];
+        } else {
+            [self releaseSlot:slot];
+        }
+    }
+    return presented;
+}
+
 - (void)releaseSlot:(NSInteger)slot {
     if (slot < 0 || slot >= HP_STEREO_SLOTS) {
         return;
@@ -298,6 +352,31 @@ enum { HPSlotFree = 0, HPSlotWriting, HPSlotPending, HPSlotPresenting };
 @end
 
 static HPStereoSink* sStereoSink; // guarded by sLock
+
+// ---------------------------------------------------------------------------
+// Display clock: a CADisplayLink on the main run loop. Each refresh first runs the
+// host's tick handler (the flat window presents the newest finished frame), then
+// HP_DisplayTick wakes the engine, which paces its frames on these ticks.
+
+static void (^sDisplayTickHandler)(void); // main thread only
+
+@interface HPDisplayClock : NSObject
+@end
+
+@implementation HPDisplayClock
+
+- (void)tick:(CADisplayLink*)link {
+    if (sDisplayTickHandler != nil) {
+        sDisplayTickHandler();
+    }
+    const CFTimeInterval period = link.targetTimestamp - link.timestamp;
+    HP_DisplayTick(period > 0 ? round(1.0 / period) : 90.0);
+}
+
+@end
+
+static HPDisplayClock* sDisplayClock;
+static CADisplayLink* sDisplayLink;
 
 // HPPresenter.present: runs on the game thread, before the engine commits `cmdbuf`.
 // Stereo sink attached: every eye goes to the sink. Otherwise eye 0 is drawn
@@ -339,7 +418,7 @@ static void HPPresent(void* ctx, const HPPresentInfo* info) {
         if (drawable == nil) {
             return;
         }
-        if (EncodeFit(cmdbuf, source, drawable.texture, IsSRGB(source.pixelFormat))) {
+        if (EncodeFit(&sGameCache, cmdbuf, source, drawable.texture, IsSRGB(source.pixelFormat))) {
             [cmdbuf presentDrawable:drawable];
         }
     }
@@ -378,6 +457,35 @@ static void* EngineThreadMain(void* arg) {
     os_unfair_lock_lock(&sLock);
     sStereoSink = sink;
     os_unfair_lock_unlock(&sLock);
+}
+
++ (void)setDisplayTickHandler:(void (^)(void))handler {
+    sDisplayTickHandler = [handler copy];
+}
+
++ (void)startDisplayClock {
+    if (sDisplayLink != nil) {
+        return;
+    }
+    sDisplayClock = [HPDisplayClock new];
+    sDisplayLink = [CADisplayLink displayLinkWithTarget:sDisplayClock selector:@selector(tick:)];
+    sDisplayLink.preferredFrameRateRange = CAFrameRateRangeMake(45, 90, 90);
+    [sDisplayLink addToRunLoop:NSRunLoop.mainRunLoop forMode:NSRunLoopCommonModes];
+}
+
++ (void)detachStereoSink:(HPStereoSink*)sink {
+    os_unfair_lock_lock(&sLock);
+    if (sStereoSink == sink) {
+        sStereoSink = nil;
+    }
+    os_unfair_lock_unlock(&sLock);
+}
+
++ (HPStereoSink*)attachedStereoSink {
+    os_unfair_lock_lock(&sLock);
+    HPStereoSink* sink = sStereoSink;
+    os_unfair_lock_unlock(&sLock);
+    return sink;
 }
 
 + (HPEngineState)engineState {
@@ -419,6 +527,7 @@ static void* EngineThreadMain(void* arg) {
     HPPresenter presenter = { .ctx = NULL, .present = HPPresent };
     HP_SetPresenter(&presenter);
     HP_SetEyeCount(1);
+    [self startDisplayClock];
 
     NSString* executable = NSBundle.mainBundle.executablePath ?: @"SoHVision";
     char* argv0 = strdup(executable.fileSystemRepresentation);

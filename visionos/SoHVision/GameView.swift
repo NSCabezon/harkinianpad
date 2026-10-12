@@ -11,6 +11,8 @@ struct GameView: View {
     // Launch with `-StereoGame YES` to start in the 3D (stereo) view.
     @State private var stereoGame = UserDefaults.standard.bool(forKey: "StereoGame")
     @State private var engineError: String?
+    // FPS meter ornament; off by default (`-ShowFPS YES` turns it on at launch).
+    @State private var showFPS = UserDefaults.standard.bool(forKey: "ShowFPS")
 
     var body: some View {
         Group {
@@ -50,9 +52,15 @@ struct GameView: View {
                 .disabled(showStereoSpike)
                 Toggle("Stereo test", isOn: $showStereoSpike)
                     .toggleStyle(.button)
+                Toggle("FPS", isOn: $showFPS)
+                    .toggleStyle(.button)
             }
             .padding()
             .glassBackgroundEffect()
+        }
+        // An ornament, not an overlay: the 3D plane sits in front of the window surface.
+        .ornament(visibility: showFPS ? .visible : .hidden, attachmentAnchor: .scene(.top), contentAlignment: .bottom) {
+            FPSBadge(monitor: PerfMonitor.shared)
         }
         // Without this, visionOS routes a connected gamepad to the system
         // pointer and the sticks and face buttons never reach the app.
@@ -66,6 +74,7 @@ struct GameView: View {
     }
 
     private func startEngine() {
+        PerfMonitor.shared.start()
         if !HPVisionHost.startEngine() {
             refreshEngineError()
         }
@@ -78,6 +87,7 @@ struct GameView: View {
     private func updateActive() {
         HP_SetActive(scenePhase == .active && !showStereoSpike ? 1 : 0)
         HP_SetEyeCount(stereoGame && !showStereoSpike ? 2 : 1)
+        PerfMonitor.shared.setMode(stereoGame ? "3D" : "2D")
     }
 
     private func refreshEngineError() {
@@ -89,5 +99,28 @@ struct GameView: View {
         default:
             engineError = nil
         }
+    }
+}
+
+/// Compact FPS meter (PerfMonitor, refreshed once per second).
+private struct FPSBadge: View {
+    let monitor: PerfMonitor
+
+    var body: some View {
+        let s = monitor.sample
+        let stereo = monitor.mode == "3D"
+        VStack(alignment: .leading, spacing: 2) {
+            Text("\(monitor.mode) · \(s.eyes) eye\(s.eyes == 1 ? "" : "s") · \(s.width)×\(s.height)")
+            Text("game \(s.gameFps, specifier: "%.1f") fps")
+            Text(stereo
+                 ? "replace \(s.presentFps, specifier: "%.1f")/s · drop \(s.dropped)"
+                 : "present \(s.presentFps, specifier: "%.1f")/s")
+            Text("cpu \(s.cpuAvgMs, specifier: "%.2f") / \(s.cpuMaxMs, specifier: "%.2f") ms")
+            Text("audio q \(s.audioQueued) · underruns \(s.audioUnderruns)")
+        }
+        .font(.caption.monospacedDigit())
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
+        .glassBackgroundEffect(in: RoundedRectangle(cornerRadius: 16, style: .continuous))
     }
 }
