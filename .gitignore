@@ -46,3 +46,6 @@ __pycache__/
 
 # Local ROMs (never commit)
 roms/
+
+# Local texture/model packs (never commit)
+mods-local/
