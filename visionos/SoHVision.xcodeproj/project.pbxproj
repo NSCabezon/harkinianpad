@@ -253,6 +253,7 @@
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 4K7V7FKKFE;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "SoHVision-Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = "Ship of Harkinian";
 				INFOPLIST_KEY_GCSupportsControllerUserInteraction = YES;
 				INFOPLIST_KEY_UIFileSharingEnabled = YES;
@@ -330,6 +331,7 @@
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 4K7V7FKKFE;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "SoHVision-Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = "Ship of Harkinian";
 				INFOPLIST_KEY_GCSupportsControllerUserInteraction = YES;
 				INFOPLIST_KEY_UIFileSharingEnabled = YES;

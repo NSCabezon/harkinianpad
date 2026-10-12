@@ -10,7 +10,6 @@ struct StereoSpikeView: View {
     @State private var status = "Cargando material…"
     @State private var fps = 0
     @State private var dropped = 0
-    @Environment(\.physicalMetrics) private var metrics
 
     var body: some View {
         GeometryReader3D { proxy in
@@ -33,10 +32,14 @@ struct StereoSpikeView: View {
                     status = "Error: \(error)"
                 }
             } update: { content in
-                // Fit the 1 m-wide plane to the window width.
+                // Fit the 1 m-wide plane to the view's frame in scene meters, placed
+                // on the window surface like StereoGameView (in front, it hides the ornament).
                 guard let plane = content.entities.first(where: { $0.name == "StereoPlane" }) else { return }
-                let widthM = Float(metrics.convert(proxy.size.width, to: .meters))
-                plane.scale = SIMD3(repeating: widthM)
+                let box = content.convert(proxy.frame(in: .local), from: .local, to: .scene)
+                let fitW = min(box.extents.x, box.extents.y * 16.0 / 9.0)
+                guard fitW > 0.001 else { return }
+                plane.scale = SIMD3(repeating: fitW)
+                plane.position = SIMD3(box.center.x, box.center.y, box.min.z - box.extents.z * 0.5 + 0.002)
             }
         }
         .overlay(alignment: .bottomLeading) {
