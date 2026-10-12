@@ -43,3 +43,6 @@ xcuserdata/
 # Private task evidence
 /work/
 __pycache__/
+
+# Local ROMs (never commit)
+roms/
