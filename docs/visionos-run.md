@@ -112,6 +112,29 @@ Delete the file to start a fresh one. `SOH_PERF_LOG=1` additionally logs the eng
 300-frame `Interpreter::Run` average and every shader compiled at runtime (`[Perf] shader
 … compiled in N ms`, a source of hitches) to `Documents/logs/Ship of Harkinian.log`.
 
+### Shader cache (first-use hitches)
+
+Fast3D shaders are generated as MSL source and compiled at runtime; a cold compile costs
+~150–170 ms (≈95% the MSL→library front end, pipelines ~3 ms each), which was the main
+first-use hitch. Now:
+
+- Every shader + msaa variant built is appended to `Documents/shader-cache.txt`
+  (`id0 id1 flags msaa`, flags: 1 = three-point filter, 2 = sRGB). Delete it to start over.
+- On launch two background threads compile the listed shaders (first-use order) and the game
+  thread takes them when asked; it only compiles itself if one was never seen (or not reached
+  yet — it then waits for an in-flight one rather than compiling twice). Pipelines are created
+  only for the msaa level in use (was every supported level).
+- First launch: the app bundles `assets/shader-cache-seed.txt` (title screen, attract demo and
+  Kokiri Forest). Regenerate it after playing in the simulator with
+  `scripts/generate-shader-seed.sh <UDID>`; it lives in `assets/visionos/` and
+  `build-visionos.sh` copies it into `<build>/soh/assets/`, which the Copy Engine Resources
+  phase already bundles.
+- `SOH_SHADER_PRECOMPILE=0` disables the background compile (A/B tests). With `SOH_PERF_LOG`
+  the log says, per shader, `compiled on the game thread in N ms (library …, pipeline …)` or
+  `ready from precompile`, plus `[ShaderCache]` totals, and texture imports/resource loads
+  that take ≥ 2 ms.
+- `MTLBinaryArchive` is not used: it only caches the pipeline back end, a few ms of the cost.
+
 ### Frame pacing
 
 - One clock: a `CADisplayLink` in the host (`HPVisionHost`) calls `HP_DisplayTick` on

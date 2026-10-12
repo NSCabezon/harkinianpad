@@ -5,7 +5,8 @@
 #   libSoHEngine.a        soh + libultraship + every dependency, merged with libtool
 #   soh.o2r               ROM-free port archive (bundle it as an app resource)
 #   gamecontrollerdb.txt  pinned SDL controller mappings (bundle it too)
-#   soh/assets/           extractor XMLs used for first-run ROM extraction
+#   soh/assets/           extractor XMLs used for first-run ROM extraction, plus the
+#                         Metal shader seed list (shader-cache-seed.txt)
 # and prints the system frameworks/libraries the app must link.
 #
 # The app is visionos/SoHVision.xcodeproj; this script never builds it.
@@ -56,6 +57,13 @@ log_stage port-archive
 # Same pinned inputs as generate-port-archive.sh, written into the build dir.
 python3 "$ROOT/scripts/build-port-archive.py" \
     "$SRC/soh/assets/custom" "$SRC/libultraship/src/fast/shaders" "$BUILD_DIR/soh.o2r"
+
+# Default Metal shader list (scripts/generate-shader-seed.sh): soh/assets/ is copied into the app
+# as assets/, where the engine precompiles it on first launch before shader-cache.txt exists.
+SHADER_SEED="$ROOT/assets/visionos/shader-cache-seed.txt"
+if [ -f "$SHADER_SEED" ]; then
+    cp -f "$SHADER_SEED" "$BUILD_DIR/soh/assets/shader-cache-seed.txt"
+fi
 
 log_stage merge
 # Every static library the soh target links, transitively. SDL2main is never
