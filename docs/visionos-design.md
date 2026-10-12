@@ -58,6 +58,29 @@ CMake sites that test for iOS and must accept visionOS:
 `SW/ZAPDTR/ZAPD/CMakeLists.txt:378,407`. Remove `SDL2::SDL2main`
 (`ios.cmake:~111`, `SOH/CMakeLists.txt:770`).
 
+Stage 1 notes (WP0/WP1/WP2 stubs, done):
+
+- Build: `scripts/build-visionos.sh [--simulator|--device]` (Ninja, native CMake
+  `CMAKE_SYSTEM_NAME=visionOS`; no `verify-sources.py`) → `build-visionos-sim/`
+  with `libSoHEngine.a`, `soh.o2r`, `gamecontrollerdb.txt`, `soh/assets/`. It
+  link-checks the merged library and prints the frameworks the app must link.
+- Entry point: `int SoHEngine_Main(int argc, char** argv)` (`SOH/src/code/main.c`)
+  calls `SDL_SetMainReady()` and then SoH's `SDL_main`. The host calls it on the
+  game thread. The library contains no `main` and no SDL2main.
+- Defines: visionOS keeps `__IOS__` (Documents path, SDL audio, mobile ImGui,
+  extractor, no networking) and adds `__VISIONOS__` only where it differs
+  (backend choice, `gfx_host.cpp`, entry point). Touch controls are a no-op C
+  stub (`SOH/visionos/HarkinianPadTouchControlsStub.c`).
+- Presenter ABI: `present(ctx, const HPPresentInfo*)`. The info struct only grows
+  by appending fields. Also `HP_SetEyeCount`, `HP_SetScreenGeometry` (values are
+  stored only for now). For WP3: one output texture per eye (`out[2]`), not a
+  shared fb0, and the host must not assume exactly one present per frame.
+- `GfxWindowBackendHost::IsFrameReady` (not `HandleEvents`) parks the game thread
+  on the condvar while inactive (up to 100 ms per call), because SoH's loop polls
+  `WindowIsFrameReady` before running a frame.
+- SDL2 is built with `SDL_HIDAPI=OFF` too (SDL 2.32 omits `hidapi/ios/hid.m` for
+  visionOS; it only added BLE Steam Controllers). Gamepads go through MFi.
+
 SDL video calls that need guards: `SDL_GetDisplayUsableBounds` (`Gui.cpp:84`,
 `OTRGlobals.cpp:140`). Calls that just fail harmlessly: `SDL_ShowSimpleMessageBox`,
 `SDL_SetClipboardText`, `SDL_StartTextInput`.
