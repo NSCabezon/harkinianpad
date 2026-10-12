@@ -44,6 +44,24 @@ The **Stereo test** ornament under the window (or launching with
 see red with one dot and the right eye blue with two dots, with the white bar
 floating in front of the window.
 
+## Cinema ("Cine")
+
+**Cine** in the bottom ornament (or launching with `-StartCinema YES`) opens a fully
+immersive space (`ImmersiveSpace` `cinema`, style `.full`) and closes the window: the
+game plays on a world-anchored stereo screen 4.5 m wide (16:9), 5 m ahead, centre
+1.35 m above the floor (`-CinemaHeight <m>` overrides), in a dark room. Same pipeline
+as 3D (`StereoGamePresenter`), render 1920×1080 per eye, `HP_SetScreenGeometry(4.5, 5)`.
+
+- Exit: hold **L3 + R3** (click both sticks; on a Sense pair, one stick each) for 1 s,
+  or **Salir del cine** in the panel under the screen. Unmapped in SoH's default
+  controls. Closing the space any other way (Digital Crown) reopens the window too.
+- The panel also toggles the FPS meter (shown above it, mode `Cine`).
+- Ghost controllers: resting PS VR2 Sense controllers show as translucent stand-ins
+  at their grip pose (ARKit accessory + hand tracking, asked on first open; not in the
+  simulator). Hidden while held: platform `heldChirality`, input in the last 2 s, or
+  moving with a palm near / no hands tracked; shown after 1 s still with the hand away
+  (2.5 s otherwise). Logs: category `Ghost`.
+
 ## Performance reports
 
 **FPS** in the bottom ornament (or launching with `-ShowFPS YES`) shows a small

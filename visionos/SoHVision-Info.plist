@@ -17,5 +17,22 @@
 	</array>
 	<key>GCSupportsControllerUserInteraction</key>
 	<true/>
+	<!-- Multiple scenes: the game window plus the "Cine" ImmersiveSpace. -->
+	<key>UIApplicationSceneManifest</key>
+	<dict>
+		<key>UIApplicationSupportsMultipleScenes</key>
+		<true/>
+		<key>UIApplicationPreferredDefaultSceneSessionRole</key>
+		<string>UIWindowSceneSessionRoleApplication</string>
+		<key>UISceneConfigurations</key>
+		<dict/>
+	</dict>
+	<!-- Cinema ghost controllers (SenseGhosts): ARKit accessory tracking of the
+	     PS VR2 Sense controllers, and hand tracking to tell a resting controller
+	     from one in the hand. Requested only when the cinema opens. -->
+	<key>NSAccessoryTrackingUsageDescription</key>
+	<string>Muestra dónde están los mandos PS VR2 Sense apoyados mientras juegas en el modo Cine.</string>
+	<key>NSHandsTrackingUsageDescription</key>
+	<string>Distingue si tienes un mando PS VR2 Sense en la mano para mostrarlo solo cuando está apoyado (modo Cine).</string>
 </dict>
 </plist>

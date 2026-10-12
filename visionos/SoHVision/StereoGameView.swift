@@ -29,7 +29,7 @@ private let stereoTiers: [(Int, Int)] = [(1280, 720), (1920, 1080)]
 
 /// Window distance is not observable in the Shared Space; visionOS opens windows
 /// roughly at arm's length+. Verify on device (drives the divergence cap).
-private let assumedViewingDistanceM: Float = 1.2
+let assumedViewingDistanceM: Float = 1.2
 
 @MainActor
 final class StereoGamePresenter {
@@ -82,8 +82,10 @@ final class StereoGamePresenter {
     }
 
     /// The plane's on-screen size changed: pick the render tier, tell the engine
-    /// its render size and the physical screen geometry.
-    func layout(widthPoints: CGFloat, widthMeters: Float, displayScale: CGFloat) {
+    /// its render size and the physical screen geometry. One presenter per view
+    /// (window plane or cinema screen); the last one activated gets the frames.
+    func layout(widthPoints: CGFloat, widthMeters: Float, displayScale: CGFloat,
+                distanceMeters: Float = assumedViewingDistanceM) {
         guard widthPoints > 1, widthMeters > 0 else { return }
         let px = Int((widthPoints * max(displayScale, 1)).rounded())
         let chosen = stereoTiers.first(where: { $0.0 >= px }) ?? stereoTiers[stereoTiers.count - 1]
@@ -97,9 +99,9 @@ final class StereoGamePresenter {
             }
         }
         HP_SetViewSize(Int32(tier.0), Int32(tier.1))
-        if abs(lastGeometry.0 - widthMeters) > 0.005 {
-            lastGeometry = (widthMeters, assumedViewingDistanceM)
-            HP_SetScreenGeometry(widthMeters, assumedViewingDistanceM)
+        if abs(lastGeometry.0 - widthMeters) > 0.005 || lastGeometry.1 != distanceMeters {
+            lastGeometry = (widthMeters, distanceMeters)
+            HP_SetScreenGeometry(widthMeters, distanceMeters)
         }
     }
 
