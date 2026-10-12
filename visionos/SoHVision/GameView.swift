@@ -55,8 +55,6 @@ struct GameView: View {
                 .disabled(showStereoSpike || model.cinema != .closed)
                 Button("Cine", systemImage: "theatermasks", action: openCinema)
                     .disabled(showStereoSpike || model.cinema != .closed)
-                Toggle("Stereo test", isOn: $showStereoSpike)
-                    .toggleStyle(.button)
                 Toggle("FPS", isOn: $model.showFPS)
                     .toggleStyle(.button)
             }

@@ -21,8 +21,8 @@ private enum Screen {
 /// "Cine": the game on a large world-anchored stereo screen in a dark, fully
 /// immersive room. Same pipeline as the 3D window (StereoGamePresenter: ring ->
 /// LowLevelTextures -> StereoMaterial); the window is closed meanwhile, so only
-/// this presenter is attached. Exit: hold L3+R3 (both stick clicks) for 1 s, or
-/// the "Salir del cine" button in the panel under the screen.
+/// this presenter is attached. No UI floats in front of the screen: exit by
+/// holding L3+R3 (both stick clicks) for 1 s, or with the Digital Crown.
 struct CinemaView: View {
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.openWindow) private var openWindow
@@ -36,7 +36,7 @@ struct CinemaView: View {
     private let log = Logger(subsystem: "com.nscabezon.sohvision", category: "Cinema")
 
     var body: some View {
-        RealityView { content, attachments in
+        RealityView { content in
             content.add(await Self.makeRoom())
             do {
                 let plane = try await presenter.makePlane()
@@ -47,22 +47,12 @@ struct CinemaView: View {
                 log.error("cinema screen failed: \(String(describing: error), privacy: .public)")
             }
             content.add(ghosts.root)
-            if let panel = attachments.entity(for: "panel") {
-                // Low and close, like a remote on a table: below the screen in view.
-                panel.position = [0, 1.0, -1.3]
-                panel.orientation = simd_quatf(angle: -0.35, axis: [1, 0, 0])
-                content.add(panel)
-            }
             frameUpdates = content.subscribe(to: SceneEvents.Update.self) { event in
                 MainActor.assumeIsolated {
                     let dt = Float(event.deltaTime)
                     ghosts.update(dt: dt)
                     if exitCombo.update(dt: dt) { exitCinema() }
                 }
-            }
-        } attachments: {
-            Attachment(id: "panel") {
-                CinemaPanel(model: model, exit: exitCinema)
             }
         }
         // The window that claimed the gamepad is closed: claim it here, or
@@ -149,30 +139,6 @@ struct CinemaView: View {
         ctx.drawRadialGradient(gradient, startCenter: c, startRadius: 0, endCenter: c,
                                endRadius: CGFloat(size) * 0.45, options: [])
         return ctx.makeImage()
-    }
-}
-
-/// Exit, FPS toggle and the FPS meter, under the screen.
-private struct CinemaPanel: View {
-    @Bindable var model: AppModel
-    let exit: () -> Void
-
-    var body: some View {
-        VStack(spacing: 12) {
-            if model.showFPS {
-                FPSBadge(monitor: PerfMonitor.shared)
-            }
-            HStack(spacing: 16) {
-                Button("Salir del cine", systemImage: "xmark", action: exit)
-                Toggle("FPS", isOn: $model.showFPS)
-                    .toggleStyle(.button)
-            }
-            .padding()
-            .glassBackgroundEffect()
-            Text("Mantén L3 + R3 (clic en los dos sticks) 1 s para salir")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-        }
     }
 }
 
