@@ -21,8 +21,10 @@ private enum Screen {
 /// "Cine": the game on a large world-anchored stereo screen in a dark, fully
 /// immersive room. Same pipeline as the 3D window (StereoGamePresenter: ring ->
 /// LowLevelTextures -> StereoMaterial); the window is closed meanwhile, so only
-/// this presenter is attached. No UI floats in front of the screen: exit by
-/// holding L3+R3 (both stick clicks) for 1 s, or with the Digital Crown.
+/// this presenter is attached. Nothing overlaps the screen: the FPS meter sits
+/// above its top edge and the exit/FPS panel low and near, below the line of
+/// sight to the screen's bottom edge. Exit: the panel's button, holding L3+R3
+/// (both stick clicks) for 1 s, or the Digital Crown.
 struct CinemaView: View {
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.openWindow) private var openWindow
@@ -36,7 +38,7 @@ struct CinemaView: View {
     private let log = Logger(subsystem: "com.nscabezon.sohvision", category: "Cinema")
 
     var body: some View {
-        RealityView { content in
+        RealityView { content, attachments in
             content.add(await Self.makeRoom())
             do {
                 let plane = try await presenter.makePlane()
@@ -47,12 +49,35 @@ struct CinemaView: View {
                 log.error("cinema screen failed: \(String(describing: error), privacy: .public)")
             }
             content.add(ghosts.root)
+            if let meter = attachments.entity(for: "fps") {
+                // In the screen's plane, just above its top edge; scaled up to read at 5 m.
+                meter.position = Screen.center + [0, Screen.width * 9 / 32 + 0.25, 0.01]
+                meter.scale = SIMD3(repeating: 3)
+                content.add(meter)
+            }
+            if let panel = attachments.entity(for: "panel") {
+                // Low and near, like a remote on a table. The sight line from a seated
+                // (1.2 m) or standing (1.7 m) eye to the screen's bottom edge passes
+                // 0.85-1.2 m high here, so the panel (top ~0.8 m) never covers the screen.
+                panel.position = [0, 0.72, -1.4]
+                panel.orientation = simd_quatf(angle: -0.45, axis: [1, 0, 0])
+                content.add(panel)
+            }
             frameUpdates = content.subscribe(to: SceneEvents.Update.self) { event in
                 MainActor.assumeIsolated {
                     let dt = Float(event.deltaTime)
                     ghosts.update(dt: dt)
                     if exitCombo.update(dt: dt) { exitCinema() }
                 }
+            }
+        } attachments: {
+            Attachment(id: "fps") {
+                if model.showFPS {
+                    FPSBadge(monitor: PerfMonitor.shared)
+                }
+            }
+            Attachment(id: "panel") {
+                CinemaPanel(model: model, exit: exitCinema)
             }
         }
         // The window that claimed the gamepad is closed: claim it here, or
@@ -139,6 +164,27 @@ struct CinemaView: View {
         ctx.drawRadialGradient(gradient, startCenter: c, startRadius: 0, endCenter: c,
                                endRadius: CGFloat(size) * 0.45, options: [])
         return ctx.makeImage()
+    }
+}
+
+/// Exit button and FPS toggle, on the low panel near the person.
+private struct CinemaPanel: View {
+    @Bindable var model: AppModel
+    let exit: () -> Void
+
+    var body: some View {
+        VStack(spacing: 8) {
+            HStack(spacing: 16) {
+                Button("Salir del cine", systemImage: "xmark", action: exit)
+                Toggle("FPS", isOn: $model.showFPS)
+                    .toggleStyle(.button)
+            }
+            .padding()
+            .glassBackgroundEffect()
+            Text("o mantén L3 + R3 1 s")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
     }
 }
 
