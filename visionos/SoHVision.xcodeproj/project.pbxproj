@@ -55,6 +55,7 @@
 				5A0000000000000000000007 /* Sources */,
 				5A0000000000000000000003 /* Frameworks */,
 				5A0000000000000000000008 /* Resources */,
+				5A0000000000000000000010 /* Copy Engine Resources */,
 			);
 			buildRules = (
 			);
@@ -112,6 +113,28 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXResourcesBuildPhase section */
+
+/* Begin PBXShellScriptBuildPhase section */
+		5A0000000000000000000010 /* Copy Engine Resources */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Copy Engine Resources";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "set -euo pipefail\ncase \"${PLATFORM_NAME}\" in\n  xrsimulator) ENGINE_DIR=\"${PROJECT_DIR}/../build-visionos-sim\" ;;\n  xros) ENGINE_DIR=\"${PROJECT_DIR}/../build-visionos\" ;;\n  *) echo \"error: unsupported platform ${PLATFORM_NAME}\"; exit 1 ;;\nesac\nfor f in soh.o2r gamecontrollerdb.txt soh/assets; do\n  if [ ! -e \"${ENGINE_DIR}/${f}\" ]; then\n    echo \"error: missing ${ENGINE_DIR}/${f} (run scripts/build-visionos.sh)\"\n    exit 1\n  fi\ndone\nDEST=\"${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}\"\nmkdir -p \"${DEST}\"\ncp -f \"${ENGINE_DIR}/soh.o2r\" \"${ENGINE_DIR}/gamecontrollerdb.txt\" \"${DEST}/\"\nrsync -aL --delete \"${ENGINE_DIR}/soh/assets/\" \"${DEST}/assets/\"\necho \"Copied engine resources from ${ENGINE_DIR} to ${DEST}\"\n";
+		};
+/* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		5A0000000000000000000007 /* Sources */ = {
@@ -175,6 +198,57 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				DEAD_CODE_STRIPPING = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
+				"EXCLUDED_ARCHS[sdk=xrsimulator*]" = x86_64;
+				HEADER_SEARCH_PATHS = (
+					"$(inherited)",
+					"$(PROJECT_DIR)/../sources/Shipwright/libultraship/include/fast/backends",
+				);
+				"LIBRARY_SEARCH_PATHS[sdk=xros*]" = (
+					"$(inherited)",
+					"$(PROJECT_DIR)/../build-visionos",
+				);
+				"LIBRARY_SEARCH_PATHS[sdk=xrsimulator*]" = (
+					"$(inherited)",
+					"$(PROJECT_DIR)/../build-visionos-sim",
+				);
+				SOH_ENGINE_DIR = "$(PROJECT_DIR)/../build-visionos";
+				"SOH_ENGINE_DIR[sdk=xrsimulator*]" = "$(PROJECT_DIR)/../build-visionos-sim";
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					"-lSoHEngine",
+					"-Wl,-force_load,$(SOH_ENGINE_DIR)/soh/libsoh.a",
+					"-Wl,-force_load,$(SOH_ENGINE_DIR)/ZAPD/libZAPDLib.a",
+					"-Wl,-force_load,$(SOH_ENGINE_DIR)/OTRExporter/OTRExporter/libOTRExporter.a",
+					"-lz",
+					"-lbz2",
+					"-lc++",
+					"-framework",
+					Foundation,
+					"-framework",
+					AVFoundation,
+					"-framework",
+					AudioToolbox,
+					"-framework",
+					CoreAudio,
+					"-framework",
+					CoreHaptics,
+					"-framework",
+					CoreMotion,
+					"-framework",
+					GameController,
+					"-framework",
+					Metal,
+					"-framework",
+					QuartzCore,
+					"-framework",
+					UIKit,
+					"-framework",
+					UniformTypeIdentifiers,
+				);
+				SWIFT_OBJC_BRIDGING_HEADER = "SoHVision/SoHVision-Bridging-Header.h";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 4K7V7FKKFE;
@@ -201,6 +275,57 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				DEAD_CODE_STRIPPING = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
+				"EXCLUDED_ARCHS[sdk=xrsimulator*]" = x86_64;
+				HEADER_SEARCH_PATHS = (
+					"$(inherited)",
+					"$(PROJECT_DIR)/../sources/Shipwright/libultraship/include/fast/backends",
+				);
+				"LIBRARY_SEARCH_PATHS[sdk=xros*]" = (
+					"$(inherited)",
+					"$(PROJECT_DIR)/../build-visionos",
+				);
+				"LIBRARY_SEARCH_PATHS[sdk=xrsimulator*]" = (
+					"$(inherited)",
+					"$(PROJECT_DIR)/../build-visionos-sim",
+				);
+				SOH_ENGINE_DIR = "$(PROJECT_DIR)/../build-visionos";
+				"SOH_ENGINE_DIR[sdk=xrsimulator*]" = "$(PROJECT_DIR)/../build-visionos-sim";
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					"-lSoHEngine",
+					"-Wl,-force_load,$(SOH_ENGINE_DIR)/soh/libsoh.a",
+					"-Wl,-force_load,$(SOH_ENGINE_DIR)/ZAPD/libZAPDLib.a",
+					"-Wl,-force_load,$(SOH_ENGINE_DIR)/OTRExporter/OTRExporter/libOTRExporter.a",
+					"-lz",
+					"-lbz2",
+					"-lc++",
+					"-framework",
+					Foundation,
+					"-framework",
+					AVFoundation,
+					"-framework",
+					AudioToolbox,
+					"-framework",
+					CoreAudio,
+					"-framework",
+					CoreHaptics,
+					"-framework",
+					CoreMotion,
+					"-framework",
+					GameController,
+					"-framework",
+					Metal,
+					"-framework",
+					QuartzCore,
+					"-framework",
+					UIKit,
+					"-framework",
+					UniformTypeIdentifiers,
+				);
+				SWIFT_OBJC_BRIDGING_HEADER = "SoHVision/SoHVision-Bridging-Header.h";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 4K7V7FKKFE;

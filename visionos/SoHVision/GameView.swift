@@ -1,25 +1,32 @@
 import SwiftUI
 import GameController
 
-/// Hosts the game. For now a placeholder that proves the window and the
-/// controller path; the Metal surface the engine renders into replaces it.
+/// Hosts the game: the engine's Metal surface, started once on first appearance.
+/// The "Stereo test" ornament swaps in the S0 spike.
 struct GameView: View {
-    @State private var controllerName: String?
+    @Environment(\.scenePhase) private var scenePhase
     // Launch with `-StereoSpike YES` to open straight into the S0 spike.
     @State private var showStereoSpike = UserDefaults.standard.bool(forKey: "StereoSpike")
+    @State private var engineError: String?
 
     var body: some View {
         Group {
             if showStereoSpike {
                 StereoSpikeView()
             } else {
-                VStack(spacing: 16) {
-                    Text("Ship of Harkinian")
-                        .font(.extraLargeTitle)
-                    Text(controllerName.map { "Mando: \($0)" } ?? "Conecta un mando")
-                        .font(.title2)
-                        .foregroundStyle(.secondary)
-                }
+                GameSurfaceView()
+                    .aspectRatio(16.0 / 9.0, contentMode: .fit)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background(.black)
+                    .overlay(alignment: .center) {
+                        if let engineError {
+                            Text(engineError)
+                                .font(.title3)
+                                .padding()
+                                .glassBackgroundEffect()
+                        }
+                    }
+                    .onAppear(perform: startEngine)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -32,14 +39,32 @@ struct GameView: View {
         // Without this, visionOS routes a connected gamepad to the system
         // pointer and the sticks and face buttons never reach the app.
         .handlesGameControllerEvents(matching: .gamepad)
-        .onReceive(NotificationCenter.default.publisher(for: .GCControllerDidConnect)) { _ in refresh() }
-        .onReceive(NotificationCenter.default.publisher(for: .GCControllerDidDisconnect)) { _ in refresh() }
-        .onAppear(perform: refresh)
+        .onChange(of: scenePhase, initial: true) { updateActive() }
+        .onChange(of: showStereoSpike) { updateActive() }
+        .onReceive(NotificationCenter.default.publisher(for: .HPVisionHostEngineDidStop)) { _ in
+            refreshEngineError()
+        }
     }
 
-    private func refresh() {
-        controllerName = GCController.controllers()
-            .first { $0.extendedGamepad != nil && $0.productCategory != GCProductCategorySpatialController }?
-            .vendorName
+    private func startEngine() {
+        if !HPVisionHost.startEngine() {
+            refreshEngineError()
+        }
+    }
+
+    /// The engine only renders while the scene is active and its surface is shown.
+    private func updateActive() {
+        HP_SetActive(scenePhase == .active && !showStereoSpike ? 1 : 0)
+    }
+
+    private func refreshEngineError() {
+        switch HPVisionHost.engineState {
+        case .failed:
+            engineError = "No se pudo arrancar el motor"
+        case .exited:
+            engineError = "El motor se detuvo (código \(HPVisionHost.engineExitCode))"
+        default:
+            engineError = nil
+        }
     }
 }
